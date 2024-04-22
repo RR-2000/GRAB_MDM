@@ -77,6 +77,7 @@ def render_sequences(cfg):
     for i in tqdm(range(len(gt_seqs))):
         vis_sequence_gt(cfg, gt_seqs[i], mv, (pred_seqs[i], start_frames[i]))
         vis_sequence_pred(cfg, gt_seqs[i], mv, (pred_seqs[i], start_frames[i]))
+        vis_sequence_combined(cfg, gt_seqs[i], mv, (pred_seqs[i], start_frames[i]))
     mv.close_viewer()
 
 
@@ -121,7 +122,7 @@ def vis_sequence_gt(cfg, sequence, mv, pred):
         
         for key in sbj_parms.keys():
             sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
-            # print(f'{key}: {sbj_parms[key].shape}')
+        #     print(f'{key}: {sbj_parms[key].shape}')
 
         sbj_parms = params2torch(sbj_parms)
         verts_sbj = to_cpu(sbj_m(**sbj_parms).vertices)
@@ -218,6 +219,92 @@ def vis_sequence_pred(cfg, sequence, mv, pred):
             mv.save_snapshot(seq_render_path+'/%04d.png'%frame)
 
 
+def vis_sequence_combined(cfg, sequence, mv, pred):
+        
+        pred_data = np.load(pred[0]).reshape(60, -1)
+        seq_data = np.load(sequence, allow_pickle=True)
+
+        n_frames = seq_data['n_frames']
+        body = seq_data['body'].item()
+        sbj_id   = seq_data['sbj_id']
+        framerate  = seq_data['framerate']
+        gender   = seq_data['gender'].item()
+        betas   = seq_data['betas']
+
+
+        T = 60
+
+        sbj_mesh = os.path.join(grab_path, '..', body['vtemp'])
+        sbj_vtemp = np.array(Mesh(filename=sbj_mesh).vertices)
+        sbj_parms = body['params']
+
+        # GT conversion
+
+        sbj_m_gt = smplx.create(cfg.model_path, model_type='smplx',
+                              gender=gender, ext='npz',
+                              num_pca_comps=24,
+                              create_global_orient=True,
+                              create_body_pose=True,
+                              create_betas=True,
+                              create_left_hand_pose=True,
+                              create_right_hand_pose=True,
+                              create_expression=True,
+                              create_jaw_pose=True,
+                              create_leye_pose=True,
+                              create_reye_pose=True,
+                              create_transl=True,
+                              batch_size=T,
+                              v_template=sbj_vtemp
+                              )
+        
+        for key in sbj_parms.keys():
+            sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
+
+        sbj_parms_gt = params2torch(sbj_parms)
+        verts_sbj_gt = to_cpu(sbj_m_gt(**sbj_parms_gt).vertices)
+
+
+        # Pred conversion
+        
+        sbj_m_pred = smplx.create(cfg.model_path, model_type='smplx',
+                              gender=gender, ext='npz',
+                              use_pca=False,
+                              create_global_orient=True,
+                              create_body_pose=True,
+                              create_betas=True,
+                              create_left_hand_pose=True,
+                              create_right_hand_pose=True,
+                              create_expression=True,
+                              create_jaw_pose=True,
+                              create_leye_pose=True,
+                              create_reye_pose=True,
+                              create_transl=True,
+                              batch_size=T,
+                              v_template=sbj_vtemp
+                              )
+        
+        # for key in sbj_parms.keys():
+        #     sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
+
+        sbj_parms['body_pose'] = pred_data[:, :63]
+        sbj_parms['left_hand_pose'] = pred_data[:, 63: 63+45]
+        sbj_parms['right_hand_pose'] = pred_data[:, 63+45:]
+
+        sbj_parms_pred = params2torch(sbj_parms)
+        verts_sbj_pred = to_cpu(sbj_m_pred(**sbj_parms_pred).vertices)
+
+        seq_render_path = makepath(sequence.replace('.npz','').replace(cfg.grab_path, cfg.combined_path))
+
+        skip_frame = 1
+        for frame in range(0,T, skip_frame):
+
+            s_mesh_gt = Mesh(vertices=verts_sbj_gt[frame], faces=sbj_m_gt.faces, vc=colors['pink'], fc =colors['red'], smooth=False)
+            s_mesh_pred = Mesh(vertices=verts_sbj_pred[frame], faces=sbj_m_pred.faces, vc=colors['pink'], fc =colors['green'], smooth=False)
+            
+            mv.set_static_meshes([s_mesh_gt, s_mesh_pred])
+            mv.save_snapshot(seq_render_path+'/%04d.png'%frame)
+
+
 if __name__ == '__main__':
 
 
@@ -245,7 +332,8 @@ if __name__ == '__main__':
         'model_path': model_path,
         'render_path':render_path,
         'gt_path': os.path.join(render_path, 'gt'),
-        'pred_path': os.path.join(render_path, 'pred')
+        'pred_path': os.path.join(render_path, 'pred'),
+        'combined_path': os.path.join(render_path, 'combined')
     }
 
     cfg = Config(**cfg)
