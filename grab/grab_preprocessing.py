@@ -60,7 +60,7 @@ class GRABDataSet(object):
         if cfg.splits is None:
             self.splits = {'test': ['mug', 'wineglass', 'camera', 'binoculars', 'fryingpan', 'toothpaste'],
                             'val': ['apple', 'toothbrush', 'elephant', 'hand'],
-                            'train': []}
+                            'train': ['hand']}
         else:
             assert isinstance(cfg.splits, dict)
             self.splits = cfg.splits
@@ -100,7 +100,11 @@ class GRABDataSet(object):
         self.obj_info = {}
         self.sbj_info = {}
 
+        min_len = 1e5
+        max_len = 0
+
         for split in self.split_seqs.keys():
+        # for split in ['train']:
 
             self.logger('Processing data for %s split.' % (split))
 
@@ -116,10 +120,24 @@ class GRABDataSet(object):
             object_data ={'verts': [], 'global_orient': [], 'transl': [], 'contact': []}
             lhand_data = {'verts': [], 'global_orient': [], 'hand_pose': [], 'transl': [], 'fullpose': []}
             rhand_data = {'verts': [], 'global_orient': [], 'hand_pose': [], 'transl': [], 'fullpose': []}
+            if not os.path.exists(os.path.join(cfg.out_path, split)):
+                os.mkdir(os.path.join(cfg.out_path, split))
 
+
+            # for sequence in tqdm(self.split_seqs[split]):
             for sequence in tqdm(self.split_seqs[split]):
 
                 seq_data = parse_npz(sequence)
+                # seq_data = np.load(sequence, allow_pickle=True)
+
+                # n_frames = seq_data['n_frames']
+                # body = seq_data['body'].item()
+                # sbj_id   = seq_data['sbj_id']
+                # framerate  = seq_data['framerate']
+                # gender   = seq_data['gender'].item()
+                # betas   = seq_data['betas']
+
+                # sbj_params = body['params']
 
                 obj_name = seq_data.obj_name
                 sbj_id   = seq_data.sbj_id
@@ -127,106 +145,185 @@ class GRABDataSet(object):
                 gender   = seq_data.gender
 
                 frame_mask = self.filter_contact_frames(seq_data)
-
+                # frame_mask = np.ones((n_frames,))
                 # total selectd frames
                 T = frame_mask.sum()
                 if T < 1:
                     continue # if no frame is selected continue to the next sequence
-
+                
+                # print(type(seq_data.body.item()))
                 sbj_params = prepare_params(seq_data.body.params, frame_mask)
                 rh_params  = prepare_params(seq_data.rhand.params, frame_mask)
                 lh_params  = prepare_params(seq_data.lhand.params, frame_mask)
                 obj_params = prepare_params(seq_data.object.params, frame_mask)
 
-                append2dict(body_data, sbj_params)
-                append2dict(rhand_data, rh_params)
-                append2dict(lhand_data, lh_params)
-                append2dict(object_data, obj_params)
 
-                sbj_vtemp = self.load_sbj_verts(sbj_id, seq_data)
+                file_names = sequence.split('/')
 
-                if cfg.save_body_verts:
-
-                    sbj_m = smplx.create(model_path=cfg.model_path,
-                                         model_type='smplx',
-                                         gender=gender,
-                                         num_pca_comps=n_comps,
-                                         v_template=sbj_vtemp,
-                                         batch_size=T)
-
-                    sbj_parms = params2torch(sbj_params)
-                    verts_sbj = to_cpu(sbj_m(**sbj_parms).vertices)
-                    body_data['verts'].append(verts_sbj)
-
-                if cfg.save_lhand_verts:
-                    lh_mesh = os.path.join(grab_path, '..', seq_data.lhand.vtemp)
-                    lh_vtemp = np.array(Mesh(filename=lh_mesh).vertices)
-
-                    lh_m = smplx.create(model_path=cfg.model_path,
-                                        model_type='mano',
-                                        is_rhand=False,
-                                        v_template=lh_vtemp,
-                                        num_pca_comps=n_comps,
-                                        flat_hand_mean=True,
-                                        batch_size=T)
-
-                    lh_parms = params2torch(lh_params)
-                    verts_lh = to_cpu(lh_m(**lh_parms).vertices)
-                    lhand_data['verts'].append(verts_lh)
-
-                if cfg.save_rhand_verts:
-                    rh_mesh = os.path.join(grab_path, '..', seq_data.rhand.vtemp)
-                    rh_vtemp = np.array(Mesh(filename=rh_mesh).vertices)
-
-                    rh_m = smplx.create(model_path=cfg.model_path,
-                                        model_type='mano',
-                                        is_rhand=True,
-                                        v_template=rh_vtemp,
-                                        num_pca_comps=n_comps,
-                                        flat_hand_mean=True,
-                                        batch_size=T)
-
-                    rh_parms = params2torch(rh_params)
-                    verts_rh = to_cpu(rh_m(**rh_parms).vertices)
-                    rhand_data['verts'].append(verts_rh)
-
-                ### for objects
-
-                obj_info = self.load_obj_verts(obj_name, seq_data, cfg.n_verts_sample)
-
-                if cfg.save_object_verts:
-
-                    obj_m = ObjectModel(v_template=obj_info['verts_sample'],
-                                        batch_size=T)
-                    obj_parms = params2torch(obj_params)
-                    verts_obj = to_cpu(obj_m(**obj_parms).vertices)
-                    object_data['verts'].append(verts_obj)
-
-                if cfg.save_contact:
-
-                    body_data['contact'].append(seq_data.contact.body[frame_mask])
-                    object_data['contact'].append(seq_data.contact.object[frame_mask][:,obj_info['verts_sample_id']])
-
-                frame_names.extend(['%s_%s' % (sequence.split('.')[0], fId) for fId in np.arange(T)])
+                # keys = sbj_params.keys()
+                # for key in keys:
+                #     print(f'{key}: {sbj_params[key].shape}')
 
 
-            self.logger('Processing for %s split finished' % split)
-            self.logger('Total number of frames for %s split is:%d' % (split, len(frame_names)))
+                # print()
+                
+                # keys = obj_params.keys()
+                # for key in keys:
+                #     print(f'{key}: {obj_params[key].shape}')
+
+                # body_model = smplx.create(cfg.model_path, model_type="smplx",
+                #               gender=gender, ext='npz',
+                #               num_pca_comps=24,
+                #               create_global_orient=True,
+                #               create_body_pose=True,
+                #               create_betas=True,
+                #               create_left_hand_pose=True,
+                #               create_right_hand_pose=True,
+                #               create_expression=True,
+                #               create_jaw_pose=True,
+                #               create_leye_pose=True,
+                #               create_reye_pose=True,
+                #             #   create_transl=True,
+                #               batch_size=T
+                #               )
+                
+                # sbj_parms = params2torch(sbj_params)
+                # sbj_parms = body_model(**sbj_parms)
+
+                # global_orient = to_cpu(sbj_parms.global_orient)
+                # root_transl = sbj_params['transl'] ## Model returns None
+                # body_pose = to_cpu(sbj_parms.body_pose)
+                # lhand_pose = to_cpu(sbj_parms.left_hand_pose)
+                # rhand_pose = to_cpu(sbj_parms.right_hand_pose)
 
 
-            out_data = [body_data, rhand_data, lhand_data, object_data]
-            out_data_name = ['body_data', 'rhand_data', 'lhand_data', 'object_data']
+                # transl: (299, 3)
+                # global_orient: (299, 3)
+                # body_pose: (299, 63): 21 JOINTS
+                # jaw_pose: (299, 3)
+                # leye_pose: (299, 3)
+                # reye_pose: (299, 3)
+                # left_hand_pose: (299, 24) : 8 JOINTS
+                # right_hand_pose: (299, 24)
+                # fullpose: (299, 165)
+                # expression: (299, 10)
 
-            for idx, data in enumerate(out_data):
-                data = np2torch(data)
-                data_name = out_data_name[idx]
-                outfname = makepath(os.path.join(self.out_path, split, '%s.pt' % data_name), isfile=True)
-                torch.save(data, outfname)
+                global_orient = sbj_params["global_orient"]
+                # print(global_orient.shape)
+                root_transl = sbj_params["transl"]
+                # print(root_transl.shape)
+                body_pose = sbj_params["body_pose"]
+                # print(body_pose.shape)
+                lhand_pose = lh_params["fullpose"]
+                # print(lhand_pose.shape)
+                rhand_pose = rh_params["fullpose"]
+                # print(rhand_pose.shape)
+                obj_orient = obj_params["global_orient"]
+                # print(obj_orient.shape)
+                obj_transl = obj_params["transl"]
+                # print(obj_transl.shape)
 
-            np.savez(os.path.join(self.out_path, split, 'frame_names.npz'), frame_names=frame_names)
+                max_len = max(max_len, T)
+                min_len = min(min_len, T)
 
-        np.save(os.path.join(self.out_path, 'obj_info.npy'), self.obj_info)
-        np.save(os.path.join(self.out_path, 'sbj_info.npy'), self.sbj_info)
+                sbj_save = np.concatenate([global_orient, body_pose, lhand_pose, rhand_pose, root_transl, obj_orient, obj_transl], axis = 1)
+                np.save(os.path.join(self.out_path, split, f'{file_names[-2]}_{file_names[-1]}.npy'), sbj_save)
+                # print(sbj_save.shape)
+
+                # exit()
+
+            #     append2dict(body_data, sbj_params)
+            #     append2dict(rhand_data, rh_params)
+            #     append2dict(lhand_data, lh_params)
+            #     append2dict(object_data, obj_params)
+
+            #     sbj_vtemp = self.load_sbj_verts(sbj_id, seq_data)
+
+            #     if cfg.save_body_verts:
+
+            #         sbj_m = smplx.create(model_path=cfg.model_path,
+            #                              model_type='smplx',
+            #                              gender=gender,
+            #                              num_pca_comps=n_comps,
+            #                              v_template=sbj_vtemp,
+            #                              batch_size=T)
+
+            #         sbj_parms = params2torch(sbj_params)
+            #         verts_sbj = to_cpu(sbj_m(**sbj_parms).vertices)
+            #         body_data['verts'].append(verts_sbj)
+
+            #     if cfg.save_lhand_verts:
+            #         lh_mesh = os.path.join(grab_path, '..', seq_data.lhand.vtemp)
+            #         lh_vtemp = np.array(Mesh(filename=lh_mesh).vertices)
+
+            #         lh_m = smplx.create(model_path=cfg.model_path,
+            #                             model_type='mano',
+            #                             is_rhand=False,
+            #                             v_template=lh_vtemp,
+            #                             num_pca_comps=n_comps,
+            #                             flat_hand_mean=True,
+            #                             batch_size=T)
+
+            #         lh_parms = params2torch(lh_params)
+            #         verts_lh = to_cpu(lh_m(**lh_parms).vertices)
+            #         lhand_data['verts'].append(verts_lh)
+
+            #     if cfg.save_rhand_verts:
+            #         rh_mesh = os.path.join(grab_path, '..', seq_data.rhand.vtemp)
+            #         rh_vtemp = np.array(Mesh(filename=rh_mesh).vertices)
+
+            #         rh_m = smplx.create(model_path=cfg.model_path,
+            #                             model_type='mano',
+            #                             is_rhand=True,
+            #                             v_template=rh_vtemp,
+            #                             num_pca_comps=n_comps,
+            #                             flat_hand_mean=True,
+            #                             batch_size=T)
+
+            #         rh_parms = params2torch(rh_params)
+            #         verts_rh = to_cpu(rh_m(**rh_parms).vertices)
+            #         rhand_data['verts'].append(verts_rh)
+
+            #     ### for objects
+
+            #     obj_info = self.load_obj_verts(obj_name, seq_data, cfg.n_verts_sample)
+
+            #     if cfg.save_object_verts:
+
+            #         obj_m = ObjectModel(v_template=obj_info['verts_sample'],
+            #                             batch_size=T)
+            #         obj_parms = params2torch(obj_params)
+            #         verts_obj = to_cpu(obj_m(**obj_parms).vertices)
+            #         object_data['verts'].append(verts_obj)
+
+            #     if cfg.save_contact:
+
+            #         body_data['contact'].append(seq_data.contact.body[frame_mask])
+            #         object_data['contact'].append(seq_data.contact.object[frame_mask][:,obj_info['verts_sample_id']])
+
+            #     frame_names.extend(['%s_%s' % (sequence.split('.')[0], fId) for fId in np.arange(T)])
+
+
+            # self.logger('Processing for %s split finished' % split)
+            # self.logger('Total number of frames for %s split is:%d' % (split, len(frame_names)))
+
+
+            # out_data = [body_data, rhand_data, lhand_data, object_data]
+            # out_data_name = ['body_data', 'rhand_data', 'lhand_data', 'object_data']
+
+            # for idx, data in enumerate(out_data):
+            #     data = np2torch(data)
+            #     data_name = out_data_name[idx]
+            #     outfname = makepath(os.path.join(self.out_path, split, '%s.pt' % data_name), isfile=True)
+            #     torch.save(data, outfname)
+
+            # np.savez(os.path.join(self.out_path, split, 'frame_names.npz'), frame_names=frame_names)
+
+        # np.save(os.path.join(self.out_path, 'obj_info.npy'), self.obj_info)
+        # np.save(os.path.join(self.out_path, 'sbj_info.npy'), self.sbj_info)
+
+        print(f'MAX_LEN{max_len}')
+        print(f'MIN_LEN{min_len}')
 
     def process_sequences(self):
 
@@ -257,13 +354,13 @@ class GRABDataSet(object):
 
             # split train, val, and test sequences
             self.selected_seqs.append(sequence)
-            if object_name in self.splits['test']:
+            if subject_id in self.splits['test']:
                 self.split_seqs['test'].append(sequence)
-            elif object_name in self.splits['val']:
+            elif subject_id in self.splits['val']:
                 self.split_seqs['val'].append(sequence)
             else:
                 self.split_seqs['train'].append(sequence)
-                if object_name not in self.splits['train']:
+                if subject_id not in self.splits['train']:
                     self.splits['train'].append(object_name)
 
     def filter_contact_frames(self, seq_data):
@@ -345,7 +442,7 @@ if __name__ == '__main__':
     grab_path = args.grab_path
     out_path = args.out_path
     model_path = args.model_path
-    process_id = 'GRAB_V00' # choose an appropriate ID for the processed data
+    process_id = 'GRAB_OBJ' # choose an appropriate ID for the processed data
 
 
     # grab_path = 'PATH_TO_DOWNLOADED_GRAB_DATA/grab'
@@ -357,6 +454,11 @@ if __name__ == '__main__':
     # split the dataset based on the objects
     grab_splits = { 'test': ['mug', 'wineglass', 'camera', 'binoculars', 'fryingpan', 'toothpaste'],
                     'val': ['apple', 'toothbrush', 'elephant', 'hand'],
+                    'train': []}
+
+    # split the dataset based on the subjects
+    grab_splits = { 'test': ['s10', 's9'],
+                    'val': ['s8'],
                     'train': []}
 
 
@@ -384,6 +486,8 @@ if __name__ == '__main__':
         # body and hand model path
         'model_path':model_path,
     }
+
+    # print(f'Outpath:{os.path.join(out_path, process_id)}')
 
     cwd = os.getcwd()
     default_cfg_path = os.path.join(cwd, '../configs/grab_preprocessing_cfg.yaml')
