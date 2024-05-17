@@ -97,7 +97,7 @@ def render_sequences_hml(cfg):
 
     # Base Paths
     preds_base = './predicts_hml'
-    gt_base = './grab'
+    gt_base = './grab/gt_grab'
     preds_paths = os.listdir(preds_base)
     print(preds_paths)
     pred_seqs = []
@@ -110,6 +110,8 @@ def render_sequences_hml(cfg):
             continue
         
         pred_seqs.append(os.path.join(preds_base, i))
+        gt_seqs.append(os.path.join(gt_base, data[1], f"{data[2]}_{data[3]}_{data[4]}.npz"))
+        start_frames.append(int(data[5][:-4]))
 
 
     # choice = np.random.choice(len(all_seqs), 10, replace=False)
@@ -118,7 +120,7 @@ def render_sequences_hml(cfg):
     #     vis_sequence(cfg,all_seqs[i], mv)
 
     for i in tqdm(range(len(pred_seqs))):
-        vis_sequence_combined_hml(cfg, pred_seqs[i], mv)
+        vis_sequence_combined_hml(cfg, pred_seqs[i], gt_seqs[i], start_frames[i], mv)
     mv.close_viewer()
 
 def vis_sequence_gt(cfg, sequence, mv, pred):
@@ -346,7 +348,12 @@ def vis_sequence_combined(cfg, sequence, mv, pred):
             mv.save_snapshot(seq_render_path+'/%04d.png'%frame)
 
 
-def vis_sequence_combined_hml(cfg, sequence, mv):
+def vis_sequence_combined_hml(cfg, sequence, global_info, start_frame, mv):
+        
+        glob_data = parse_npz(global_info)
+        sample_idx = np.arange(60)*4 + start_frame
+        glob_transl = glob_data.body.params['transl'][sample_idx]
+        glob_orient = glob_data.body.params['global_orient'][sample_idx]
         
         seq_data = np.load(sequence)
         pred = seq_data[0]
@@ -395,8 +402,8 @@ def vis_sequence_combined_hml(cfg, sequence, mv):
         sbj_parms= {
             #  'transl' : gt[:, 52].reshape(T, -1),
             #         'global_orient' : gt[:, 0].reshape(T, -1),
-             'transl' : np.zeros_like( gt[:, 0]).reshape(T, -1) + 1,
-                    # 'global_orient' : gt[:, 0].reshape(T, -1),
+                    'transl' : glob_transl,
+                    'global_orient' : glob_orient,
                     'body_pose' : gt[:, 0:21].reshape(T, -1),
                     'left_hand_pose' : gt[:, 21:36].reshape(T, -1),
                     'right_hand_pose' : gt[:, 36:51].reshape(T, -1),
@@ -433,6 +440,8 @@ def vis_sequence_combined_hml(cfg, sequence, mv):
         sbj_parms= {
             #  'transl' : pred[:, 52].reshape(T, -1),
                     # 'global_orient' : pred[:, 0].reshape(T, -1),
+                    'transl' : glob_transl,
+                    'global_orient' : glob_orient,
                     'body_pose' :pred[:, 0:21].reshape(T, -1),
                     'left_hand_pose' : pred[:, 21:36].reshape(T, -1),
                     'right_hand_pose' : pred[:, 36:51].reshape(T, -1),
