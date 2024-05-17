@@ -81,6 +81,46 @@ def render_sequences(cfg):
     mv.close_viewer()
 
 
+def render_sequences_hml(cfg):
+
+    grab_path = cfg.grab_path
+    print(grab_path)
+
+    mv = MeshViewer(width=1600, height=1200,offscreen=True)
+
+
+    # set the camera pose
+    camera_pose = np.eye(4)
+    camera_pose[:3, :3] = euler([80, -15, 0], 'xzx')
+    camera_pose[:3, 3] = np.array([-.5, -1.4, 1.5])
+    mv.update_camera_pose(camera_pose)
+
+    # Base Paths
+    preds_base = './predicts_hml'
+    gt_base = './grab'
+    preds_paths = os.listdir(preds_base)
+    print(preds_paths)
+    pred_seqs = []
+    gt_seqs = []
+    start_frames = []
+
+    for i in preds_paths:
+        data = i.split('_')
+        if len(data) < 3:
+            continue
+        
+        pred_seqs.append(os.path.join(preds_base, i))
+
+
+    # choice = np.random.choice(len(all_seqs), 10, replace=False)
+    # choice = [0, 1]
+    # for i in tqdm(choice):
+    #     vis_sequence(cfg,all_seqs[i], mv)
+
+    for i in tqdm(range(len(pred_seqs))):
+        vis_sequence_combined_hml(cfg, pred_seqs[i], mv)
+    mv.close_viewer()
+
 def vis_sequence_gt(cfg, sequence, mv, pred):
 
         # seq_data = parse_npz(sequence)
@@ -121,9 +161,10 @@ def vis_sequence_gt(cfg, sequence, mv, pred):
                               )
         
         for key in sbj_parms.keys():
+            print(key)
             sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
         #     print(f'{key}: {sbj_parms[key].shape}')
-
+        
         sbj_parms = params2torch(sbj_parms)
         verts_sbj = to_cpu(sbj_m(**sbj_parms).vertices)
 
@@ -305,6 +346,116 @@ def vis_sequence_combined(cfg, sequence, mv, pred):
             mv.save_snapshot(seq_render_path+'/%04d.png'%frame)
 
 
+def vis_sequence_combined_hml(cfg, sequence, mv):
+        
+        seq_data = np.load(sequence)
+        pred = seq_data[0]
+        gt = seq_data[1]        
+
+        # n_frames = seq_data['n_frames']
+        # body = seq_data['body'].item()
+        # sbj_id   = seq_data['sbj_id']
+        # framerate  = seq_data['framerate']
+        # gender   = seq_data['gender'].item()
+        # betas   = seq_data['betas']
+        file_info = sequence.split('_')
+        sbj_id = file_info[2]
+        gender = 'male' if sbj_id in ['s1', 's2', 's8', 's9', 's10'] else 'female'
+        vtemp = f'tools/subject_meshes/{gender}/{sbj_id}.ply'
+        print(vtemp)
+
+        T = 60
+
+        sbj_mesh = os.path.join(grab_path, '..', vtemp)
+        sbj_vtemp = np.array(Mesh(filename=sbj_mesh).vertices)
+        # sbj_parms = body['params']
+
+        # GT conversion
+
+        sbj_m_gt = smplx.create(cfg.model_path, model_type='smplx',
+                              gender=gender, ext='npz',
+                              use_pca=False,
+                              create_global_orient=True,
+                              create_body_pose=True,
+                              create_betas=True,
+                              create_left_hand_pose=True,
+                              create_right_hand_pose=True,
+                              create_expression=True,
+                              create_jaw_pose=True,
+                              create_leye_pose=True,
+                              create_reye_pose=True,
+                              create_transl=True,
+                              batch_size=T,
+                              v_template=sbj_vtemp
+                              )
+        
+        # for key in sbj_parms.keys():
+        #     sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
+
+        sbj_parms= {
+            #  'transl' : gt[:, 52].reshape(T, -1),
+            #         'global_orient' : gt[:, 0].reshape(T, -1),
+             'transl' : np.zeros_like( gt[:, 0]).reshape(T, -1) + 1,
+                    # 'global_orient' : gt[:, 0].reshape(T, -1),
+                    'body_pose' : gt[:, 0:21].reshape(T, -1),
+                    'left_hand_pose' : gt[:, 21:36].reshape(T, -1),
+                    'right_hand_pose' : gt[:, 36:51].reshape(T, -1),
+                    # 'leye_pose' : None,
+                    # 'reye_pose' : None,
+                    }
+
+        sbj_parms_gt = params2torch(sbj_parms)
+        verts_sbj_gt = to_cpu(sbj_m_gt(**sbj_parms_gt).vertices)
+
+
+        # Pred conversion
+        
+        sbj_m_pred = smplx.create(cfg.model_path, model_type='smplx',
+                              gender=gender, ext='npz',
+                              use_pca=False,
+                              create_global_orient=True,
+                              create_body_pose=True,
+                              create_betas=True,
+                              create_left_hand_pose=True,
+                              create_right_hand_pose=True,
+                              create_expression=True,
+                              create_jaw_pose=True,
+                              create_leye_pose=True,
+                              create_reye_pose=True,
+                              create_transl=True,
+                              batch_size=T,
+                              v_template=sbj_vtemp
+                              )
+        
+        # for key in sbj_parms.keys():
+        #     sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
+
+        sbj_parms= {
+            #  'transl' : pred[:, 52].reshape(T, -1),
+                    # 'global_orient' : pred[:, 0].reshape(T, -1),
+                    'body_pose' :pred[:, 0:21].reshape(T, -1),
+                    'left_hand_pose' : pred[:, 21:36].reshape(T, -1),
+                    'right_hand_pose' : pred[:, 36:51].reshape(T, -1),
+                    # 'leye_pose' : None,
+                    # 'reye_pose' : None,
+                    }
+
+        sbj_parms_pred = params2torch(sbj_parms)
+        verts_sbj_pred = to_cpu(sbj_m_pred(**sbj_parms_pred).vertices)
+
+        print(sequence)
+
+        seq_render_path = makepath(sequence.replace('.npy','').replace('predicts_hml', cfg.render_path))
+
+        skip_frame = 1
+        for frame in range(0,T, skip_frame):
+
+            s_mesh_gt = Mesh(vertices=verts_sbj_gt[frame], faces=sbj_m_gt.faces, vc=colors['pink'], fc =colors['red'], smooth=False)
+            s_mesh_pred = Mesh(vertices=verts_sbj_pred[frame], faces=sbj_m_pred.faces, vc=colors['pink'], fc =colors['green'], smooth=False)
+            
+            mv.set_static_meshes([s_mesh_gt, s_mesh_pred])
+            mv.save_snapshot(seq_render_path+'/%04d.png'%frame)
+
 if __name__ == '__main__':
 
 
@@ -330,12 +481,14 @@ if __name__ == '__main__':
     cfg = {
         'grab_path': grab_path,
         'model_path': model_path,
-        'render_path':render_path,
+        'render_path': render_path,
         'gt_path': os.path.join(render_path, 'gt'),
         'pred_path': os.path.join(render_path, 'pred'),
-        'combined_path': os.path.join(render_path, 'combined')
+        'combined_path': os.path.join(render_path, 'combined'),
+        'hml_path': os.path.join(render_path, 'hml')
     }
 
     cfg = Config(**cfg)
-    render_sequences(cfg)
+    # render_sequences(cfg)
+    render_sequences_hml(cfg)
 
