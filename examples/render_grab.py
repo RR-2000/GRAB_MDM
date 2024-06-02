@@ -108,10 +108,17 @@ def render_sequences_hml(cfg):
         data = i.split('_')
         if len(data) < 3:
             continue
+
+        if len(data) == 6:
         
-        pred_seqs.append(os.path.join(preds_base, i))
-        gt_seqs.append(os.path.join(gt_base, data[1], f"{data[2]}_{data[3]}_{data[4]}.npz"))
-        start_frames.append(int(data[5][:-4]))
+            pred_seqs.append(os.path.join(preds_base, i))
+            gt_seqs.append(os.path.join(gt_base, data[1], f"{data[2]}_{data[3]}_{data[4]}.npz"))
+            start_frames.append(int(data[5][:-4]))
+        else:
+            pred_seqs.append(os.path.join(preds_base, i))
+            gt_seqs.append(os.path.join(gt_base, data[1], f"{data[2]}_{data[3]}.npz"))
+            start_frames.append(int(data[4][:-4]))
+             
 
 
     # choice = np.random.choice(len(all_seqs), 10, replace=False)
@@ -354,17 +361,13 @@ def vis_sequence_combined_hml(cfg, sequence, global_info, start_frame, mv):
         sample_idx = np.arange(60)*4 + start_frame
         glob_transl = glob_data.body.params['transl'][sample_idx]
         glob_orient = glob_data.body.params['global_orient'][sample_idx]
-        
-        seq_data = np.load(sequence)
-        pred = seq_data[0]
-        gt = seq_data[1]        
+        sbj_parms = glob_data.body.params
 
-        # n_frames = seq_data['n_frames']
-        # body = seq_data['body'].item()
-        # sbj_id   = seq_data['sbj_id']
-        # framerate  = seq_data['framerate']
-        # gender   = seq_data['gender'].item()
-        # betas   = seq_data['betas']
+        
+        seq_data = np.load(sequence).reshape(60,-1, 3)
+        pred = seq_data
+
+        permute = np.array([0,2,1])
         file_info = sequence.split('_')
         sbj_id = file_info[2]
         gender = 'male' if sbj_id in ['s1', 's2', 's8', 's9', 's10'] else 'female'
@@ -381,7 +384,7 @@ def vis_sequence_combined_hml(cfg, sequence, global_info, start_frame, mv):
 
         sbj_m_gt = smplx.create(cfg.model_path, model_type='smplx',
                               gender=gender, ext='npz',
-                              use_pca=False,
+                              num_pca_comps=24,
                               create_global_orient=True,
                               create_body_pose=True,
                               create_betas=True,
@@ -396,20 +399,37 @@ def vis_sequence_combined_hml(cfg, sequence, global_info, start_frame, mv):
                               v_template=sbj_vtemp
                               )
         
-        # for key in sbj_parms.keys():
-        #     sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
+        for key in sbj_parms.keys():
+            sbj_parms[key] = sbj_parms[key][sample_idx]
 
-        sbj_parms= {
-            #  'transl' : gt[:, 52].reshape(T, -1),
-            #         'global_orient' : gt[:, 0].reshape(T, -1),
-                    'transl' : glob_transl,
-                    'global_orient' : glob_orient,
-                    'body_pose' : gt[:, 0:21].reshape(T, -1),
-                    'left_hand_pose' : gt[:, 21:36].reshape(T, -1),
-                    'right_hand_pose' : gt[:, 36:51].reshape(T, -1),
-                    # 'leye_pose' : None,
-                    # 'reye_pose' : None,
-                    }
+
+        # sbj_m_gt = smplx.create(cfg.model_path, model_type='smplx',
+        #                       gender=gender, ext='npz',
+        #                       use_pca=False,
+        #                       create_global_orient=True,
+        #                       create_body_pose=True,
+        #                       create_betas=True,
+        #                       create_left_hand_pose=True,
+        #                       create_right_hand_pose=True,
+        #                       create_expression=True,
+        #                       create_jaw_pose=True,
+        #                       create_leye_pose=True,
+        #                       create_reye_pose=True,
+        #                       create_transl=True,
+        #                       batch_size=T,
+        #                       v_template=sbj_vtemp
+        #                       )
+        
+        # # for key in sbj_parms.keys():
+        # #     sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
+
+        # sbj_parms= {
+        #             'transl' : glob_transl[:, :],
+        #             'global_orient' : glob_orient[:, :],
+        #             'body_pose' : gt[:, 0:21, :].reshape(T, -1),
+        #             'left_hand_pose' : gt[:, 21:36, :].reshape(T, -1),
+        #             'right_hand_pose' : gt[:, 36:51, :].reshape(T, -1),
+        #             }
 
         sbj_parms_gt = params2torch(sbj_parms)
         verts_sbj_gt = to_cpu(sbj_m_gt(**sbj_parms_gt).vertices)
@@ -438,15 +458,11 @@ def vis_sequence_combined_hml(cfg, sequence, global_info, start_frame, mv):
         #     sbj_parms[key] = sbj_parms[key][pred[1]: pred[1] + T]
 
         sbj_parms= {
-            #  'transl' : pred[:, 52].reshape(T, -1),
-                    # 'global_orient' : pred[:, 0].reshape(T, -1),
-                    'transl' : glob_transl,
-                    'global_orient' : glob_orient,
-                    'body_pose' :pred[:, 0:21].reshape(T, -1),
-                    'left_hand_pose' : pred[:, 21:36].reshape(T, -1),
-                    'right_hand_pose' : pred[:, 36:51].reshape(T, -1),
-                    # 'leye_pose' : None,
-                    # 'reye_pose' : None,
+                    'transl' : glob_transl[:, :],
+                    'global_orient' : glob_orient[:, :],
+                    'body_pose' :pred[:, 0:21, :].reshape(T, -1),
+                    'left_hand_pose' : pred[:, 21:36, :].reshape(T, -1),
+                    'right_hand_pose' : pred[:, 36:51, :].reshape(T, -1),
                     }
 
         sbj_parms_pred = params2torch(sbj_parms)
