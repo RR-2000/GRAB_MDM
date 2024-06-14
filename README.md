@@ -1,3 +1,18 @@
+## GRAB_MDM: A tweaked version of the GRAB repository for the GMDM pipeline of models
+
+The setup of the repository remains the same as listed below by the original authors.
+
+- Generate HML3D data representation pipeline input: 
+    ```Shell
+    python ./grab/grab_preprocessing.py --grab-path ./grab --out-path ./output --model-path ../models/smplx
+    ```
+
+- Render Joint2Smplx data with GT: 
+    ```Shell
+        #(HAS TO BE RUN WITH GPU)
+        PYOPENGL_PLATFORM=egl python examples/render_grab.py --grab-path ./grab --model-path ../models --render-path ./renders
+    ```
+
 ## GRAB: A Dataset of Whole-Body Human Grasping of Objects (ECCV 2020)
 
 
