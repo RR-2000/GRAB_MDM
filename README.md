@@ -7,11 +7,19 @@ The setup of the repository remains the same as listed below by the original aut
     python ./grab/grab_preprocessing.py --grab-path ./grab --out-path ./output --model-path ../models/smplx
     ```
 
+- Generate object embeddings via basis point sets (https://github.com/sergeyprokudin/bps)
+    ```Shell
+        pip3 install git+https://github.com/sergeyprokudin/bps
+        python ./grab/bps_gen.py
+    ```
+
+
 - Render Joint2Smplx data with GT: 
     ```Shell
         #(HAS TO BE RUN WITH GPU)
         PYOPENGL_PLATFORM=egl python examples/render_grab.py --grab-path ./grab --model-path ../models --render-path ./renders
     ```
+
 
 ## GRAB: A Dataset of Whole-Body Human Grasping of Objects (ECCV 2020)
 
