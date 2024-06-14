@@ -1,4 +1,4 @@
-## GRAB_MDM: A tweaked version of the GRAB repository for the GMDM pipeline of models
+## GRAB_MDM: A tweaked version of the GRAB repository for the GMDM pipeline
 
 The setup of the repository remains the same as listed below by the original authors.
 
