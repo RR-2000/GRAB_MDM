@@ -19,7 +19,7 @@ The setup of the repository remains the same as listed below by the original aut
         #(HAS TO BE RUN WITH GPU)
         PYOPENGL_PLATFORM=egl python examples/render_grab.py --grab-path ./grab --model-path ../models --render-path ./renders
     ```
-
+By default it will expect 3 folders "joints2smplx" for the output of the mdm module of the same name, "predicts_hml" and a processing cache and "renders" as the output directory.
 
 ## GRAB: A Dataset of Whole-Body Human Grasping of Objects (ECCV 2020)
 
